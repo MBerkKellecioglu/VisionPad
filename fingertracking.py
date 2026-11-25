@@ -31,7 +31,8 @@ mp_draw = mp.solutions.drawing_utils
 screen_w, screen_h = pyautogui.size()
 
 # Limit working space
-frame_r = 50
+frame_left, frame_right = 160, 480
+frame_top, frame_bottom = 120, 300
 
 # Starting coordinates and smoothing for tracking
 prev_x, prev_y = 0,0
@@ -59,37 +60,35 @@ while True:
 
     if result.multi_hand_landmarks:
         for hand_landmarks, world_landmarks in zip(result.multi_hand_landmarks, result.multi_hand_world_landmarks):
-            index_finger_tip = hand_landmarks.landmark[8]
             
-            # Real index finger coordinates scaled to camera resolution
-            x = int(index_finger_tip.x * w)
-            y = int(index_finger_tip.y * h)
-
-            # 3D coordinates (Origin is at the center of the palm) for thumb and middle fingers
+            # 3D coordinates (Origin is at the center of the palm) for thumb and index fingers
             w_thumb = world_landmarks.landmark[4]
-            w_middle = world_landmarks.landmark[12]
+            w_index = world_landmarks.landmark[8]
 
             # We dont need to scale anything we only need distance between those two fingers for "pinching"
-            # Mind you our index finger coordinates and middle and thumb finger coordinates are NOT in the same coordinate system
+            # Mind you our index finger coordinates and index and thumb finger coordinates are NOT in the same coordinate system
             pinch_dist = np.linalg.norm([
-                w_thumb.x - w_middle.x,
-                w_thumb.y - w_middle.y,
-                w_thumb.z - w_middle.z,
+                w_thumb.x - w_index.x,
+                w_thumb.y - w_index.y,
+                w_thumb.z - w_index.z,
             ])
 
             cv2.rectangle(
                 frame,
-                (frame_r, frame_r),
-                (w - frame_r, h - frame_r),
-                (255, 0, 255),
-                2,
+                (frame_left,frame_top),
+                (frame_right,frame_bottom),
+                (255,0,255),
+                2
             )
 
-            # Camera pixel coordinates scaled to monitor resolution using interpolation
-            screen_x = np.interp(x, (frame_r, w - frame_r), (0, screen_w))
-            screen_y = np.interp(y, (frame_r, h - frame_r), (0, screen_h))
+            mcp_ids = (5,9,13,17)
 
-            # We apply smoothing to monitor coordinates in order to block jittering
+            anchor_x = int(sum(hand_landmarks.landmark[i].x for i in mcp_ids) / len(mcp_ids) * w)
+            anchor_y = int(sum(hand_landmarks.landmark[i].y for i in mcp_ids) / len(mcp_ids) * h)
+
+            screen_x = np.interp(anchor_x, (frame_left, frame_right), (0,screen_w))
+            screen_y = np.interp(anchor_y, (frame_top, frame_bottom), (0,screen_h))
+
             curr_x = prev_x + (screen_x - prev_x) / smoothening
             curr_y = prev_y + (screen_y - prev_y) / smoothening
 
