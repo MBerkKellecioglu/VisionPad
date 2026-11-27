@@ -4,6 +4,8 @@ import numpy as np
 import pyautogui
 from videostream import VideoStream
 from collections import deque
+import time
+import Quartz
 
 """
     One line optimisation, every time when using moveTo function, by default, function sleeps for 0.1 ms
@@ -12,6 +14,17 @@ from collections import deque
     We set that pause time to 0 ms to optimise that bottleneck
 """
 pyautogui.PAUSE = 0.0
+
+def mac_click(x, y, click_count=1):
+    """Using MacOS library for inputting double click"""
+    for event_type in (Quartz.kCGEventLeftMouseDown, Quartz.kCGEventLeftMouseUp):
+        event = Quartz.CGEventCreateMouseEvent(
+            None, event_type, (x, y), Quartz.kCGMouseButtonLeft
+        )
+        Quartz.CGEventSetIntegerValueField(
+            event, Quartz.kCGMouseEventClickState, click_count
+        )
+        Quartz.CGEventPost(Quartz.kCGHIDEventTap, event)
 
 pyautogui.FAILSAFE = False
 
@@ -37,7 +50,22 @@ frame_top, frame_bottom = 120, 300
 # Starting coordinates and smoothing for tracking
 prev_x, prev_y = 0,0
 curr_x, curr_y = 0,0
-smoothening = 5
+smoothening = 8
+
+
+# Pinch tresholds
+PRESS_DIST = 0.03
+RELEASE_DIST = 0.032
+RELEASE_HOLD = 0.06       # seconds, fingers must stay open this long before a new click
+
+# Double click
+DOUBLE_CLICK_TIME = 0.9    # seconds, a second pinch within this time is a double click
+DOUBLE_CLICK_RADIUS = 100  # px, if the cursor moved further than this it's a new single click
+
+click_count = 0
+last_click_time = 0.0
+last_click_pos = (0, 0)
+release_start = None
 
 is_clicked = False
 
@@ -83,8 +111,8 @@ while True:
 
             mcp_ids = (5,9,13,17)
 
-            anchor_x = int(sum(hand_landmarks.landmark[i].x for i in mcp_ids) / len(mcp_ids) * w)
-            anchor_y = int(sum(hand_landmarks.landmark[i].y for i in mcp_ids) / len(mcp_ids) * h)
+            anchor_x = (sum(hand_landmarks.landmark[i].x for i in mcp_ids) / len(mcp_ids)) * w
+            anchor_y = (sum(hand_landmarks.landmark[i].y for i in mcp_ids) / len(mcp_ids)) * h
 
             screen_x = np.interp(anchor_x, (frame_left, frame_right), (0,screen_w))
             screen_y = np.interp(anchor_y, (frame_top, frame_bottom), (0,screen_h))
@@ -96,17 +124,43 @@ while True:
 
             prev_x, prev_y = curr_x, curr_y
 
-            if pinch_dist < 0.030 and not is_clicked:
-                pyautogui.click()
+            now = time.monotonic()
+
+            # Release: fingers must stay open for RELEASE_HOLD seconds
+            # so jitter while the fingers are touching can't trigger a new click
+            if pinch_dist > RELEASE_DIST:
+                if release_start is None:
+                    release_start = now
+                if is_clicked and now - release_start >= RELEASE_HOLD:
+                    is_clicked = False
+            else:
+                release_start = None
+
+            # Press
+            if pinch_dist < PRESS_DIST and not is_clicked:
+                gap = now - last_click_time
+                near_last = np.hypot(curr_x - last_click_pos[0], curr_y - last_click_pos[1]) < DOUBLE_CLICK_RADIUS
+
+                if gap < DOUBLE_CLICK_TIME and near_last:
+                    click_count += 1          # double/triple click, same spot as the first click
+                else:
+                    click_count = 1           # single click
+                    last_click_pos = (curr_x, curr_y)
+
+                mac_click(*last_click_pos, click_count)
+                last_click_time = now
                 is_clicked = True
-            elif pinch_dist > 0.040:
-                is_clicked = False      
 
             mp_draw.draw_landmarks(
                 frame,
                 hand_landmarks,
                 mp_hands.HAND_CONNECTIONS
             )
+
+            # Pinch distance on screen: green when pressed, red when not
+            color = (0, 255, 0) if is_clicked else (0, 0, 255)
+            cv2.putText(frame, f"{pinch_dist * 100:.1f} cm", (10, 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
 
 
     cv2.imshow("Real Time Camera Stream", frame)
