@@ -52,15 +52,14 @@ prev_x, prev_y = 0,0
 curr_x, curr_y = 0,0
 smoothening = 8
 
-
 # Pinch tresholds
 PRESS_DIST = 0.03
 RELEASE_DIST = 0.032
-RELEASE_HOLD = 0.06       # seconds, fingers must stay open this long before a new click
+RELEASE_HOLD = 0.06       # Fingers must stay open this long before a new click
 
 # Double click
-DOUBLE_CLICK_TIME = 0.9    # seconds, a second pinch within this time is a double click
-DOUBLE_CLICK_RADIUS = 100  # px, if the cursor moved further than this it's a new single click
+DOUBLE_CLICK_TIME = 0.9    # A second pinch within this time is a double click
+DOUBLE_CLICK_RADIUS = 100  # If the cursor moved further than this it's a new single click
 
 click_count = 0
 last_click_time = 0.0
@@ -111,9 +110,11 @@ while True:
 
             mcp_ids = (5,9,13,17)
 
+            # Get the average coordinates of base of the fingers to find the middle point
             anchor_x = (sum(hand_landmarks.landmark[i].x for i in mcp_ids) / len(mcp_ids)) * w
             anchor_y = (sum(hand_landmarks.landmark[i].y for i in mcp_ids) / len(mcp_ids)) * h
 
+            # Map those coordinates to screen resolution
             screen_x = np.interp(anchor_x, (frame_left, frame_right), (0,screen_w))
             screen_y = np.interp(anchor_y, (frame_top, frame_bottom), (0,screen_h))
 
@@ -126,8 +127,8 @@ while True:
 
             now = time.monotonic()
 
-            # Release: fingers must stay open for RELEASE_HOLD seconds
-            # so jitter while the fingers are touching can't trigger a new click
+            # Fingers must stay open for RELEASE_HOLD seconds
+            # So jitter while the fingers are touching can't trigger a new click
             if pinch_dist > RELEASE_DIST:
                 if release_start is None:
                     release_start = now
